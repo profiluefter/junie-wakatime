@@ -1,26 +1,26 @@
 {
-  "name": "claude-code-wakatime",
+  "name": "junie-wakatime",
   "version": "4.1.0",
-  "description": "WakaTime plugin for Claude Code",
+  "description": "WakaTime plugin for Junie",
   "bin": {
-    "claude-code-wakatime": "dist/index.js"
+    "junie-wakatime": "dist/index.js"
   },
   "scripts": {
     "prebuild": "node scripts/generate-version.js",
     "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
     "watch": "npm run prebuild && tsc --watch",
-    "version": "npm run build && git add src/version.ts .claude-plugin/plugin.json .claude-plugin/marketplace.json dist/index.js",
+    "version": "npm run build && git add src/version.ts .claude-plugin/plugin.json .claude-plugin/marketplace.json .junie-extension/marketplace.json dist/index.js",
     "release:major": "npm version major && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
     "release:patch": "npm version patch && git push && git push --tags"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wakatime/claude-code-wakatime.git"
+    "url": "git+https://github.com/profiluefter/junie-wakatime.git"
   },
   "keywords": [
-    "claude",
-    "claude-code",
+    "junie",
+    "junie-cli",
     "time-tracking",
     "ai"
   ],
@@ -44,7 +44,7 @@
   "author": "WakaTime",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/wakatime/claude-code-wakatime/issues"
+    "url": "https://github.com/profiluefter/junie-wakatime/issues"
   },
-  "homepage": "https://github.com/wakatime/claude-code-wakatime#readme"
+  "homepage": "https://github.com/profiluefter/junie-wakatime#readme"
 }

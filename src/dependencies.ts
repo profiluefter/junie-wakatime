@@ -47,7 +47,7 @@ export class Dependencies {
 
   private getRequestHeaders(): Record<string, string> {
     return {
-      'User-Agent': 'github.com/wakatime/claude-code-wakatime',
+      'User-Agent': 'github.com/profiluefter/junie-wakatime',
     };
   }
 
@@ -553,7 +553,7 @@ export class Dependencies {
   }
 
   private reportMissingPlatformSupport(osname: string, architecture: string): void {
-    const url = `https://api.wakatime.com/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=claude-code`;
+    const url = `https://api.wakatime.com/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=junie-cli`;
     const proxy = this.options.getSetting('settings', 'proxy');
     const noSSLVerify = this.options.getSetting('settings', 'no_ssl_verify');
     this.requestWithRedirects(url, {
