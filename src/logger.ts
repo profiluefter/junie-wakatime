@@ -9,7 +9,7 @@ export enum LogLevel {
   ERROR,
 }
 
-const LOG_FILE = path.join(os.homedir(), '.wakatime', 'claude-code.log');
+const LOG_FILE = path.join(os.homedir(), '.wakatime', 'junie-wakatime.log');
 
 export class Logger {
   private level: LogLevel = LogLevel.INFO;

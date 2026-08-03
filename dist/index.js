@@ -1955,8 +1955,8 @@ var require_adm_zip = __commonJS({
         return null;
       }
       function fixPath(zipPath) {
-        const { join: join4, normalize, sep: sep2 } = pth.posix;
-        return join4(".", normalize(sep2 + zipPath.split("\\").join(sep2) + sep2));
+        const { join: join4, normalize, sep } = pth.posix;
+        return join4(".", normalize(sep + zipPath.split("\\").join(sep) + sep));
       }
       function filenameFilter(filterfn) {
         if (filterfn instanceof RegExp) {
@@ -2351,10 +2351,10 @@ var require_adm_zip = __commonJS({
          * @param {function|string} [props.namefix] - optional function to help fix filename
          */
         addLocalFolderPromise: function(localPath2, props) {
-          return new Promise((resolve2, reject) => {
+          return new Promise((resolve, reject) => {
             this.addLocalFolderAsync2(Object.assign({ localPath: localPath2 }, props), (err, done) => {
               if (err) reject(err);
-              if (done) resolve2(this);
+              if (done) resolve(this);
             });
           });
         },
@@ -2541,12 +2541,12 @@ var require_adm_zip = __commonJS({
           keepOriginalPermission = get_Bool(false, keepOriginalPermission);
           overwrite = get_Bool(false, overwrite);
           if (!callback) {
-            return new Promise((resolve2, reject) => {
+            return new Promise((resolve, reject) => {
               this.extractAllToAsync(targetPath, overwrite, keepOriginalPermission, function(err) {
                 if (err) {
                   reject(err);
                 } else {
-                  resolve2(this);
+                  resolve(this);
                 }
               });
             });
@@ -2644,11 +2644,11 @@ var require_adm_zip = __commonJS({
                  */
         writeZipPromise: function(targetFileName, props) {
           const { overwrite, perm } = Object.assign({ overwrite: true }, props);
-          return new Promise((resolve2, reject) => {
+          return new Promise((resolve, reject) => {
             if (!targetFileName && opts.filename) targetFileName = opts.filename;
             if (!targetFileName) reject("ADM-ZIP: ZIP File Name Missing");
             this.toBufferPromise().then((zipData) => {
-              const ret = (done) => done ? resolve2(done) : reject("ADM-ZIP: Wasn't able to write zip file");
+              const ret = (done) => done ? resolve(done) : reject("ADM-ZIP: Wasn't able to write zip file");
               filetools.writeFileToAsync(targetFileName, zipData, overwrite, perm, ret);
             }, reject);
           });
@@ -2657,8 +2657,8 @@ var require_adm_zip = __commonJS({
          * @returns {Promise<Buffer>} A promise to the Buffer.
          */
         toBufferPromise: function() {
-          return new Promise((resolve2, reject) => {
-            _zip.toAsyncBuffer(resolve2, reject);
+          return new Promise((resolve, reject) => {
+            _zip.toAsyncBuffer(resolve, reject);
           });
         },
         /**
@@ -4754,9 +4754,9 @@ var require_cjs = __commonJS({
 var require_lib = __commonJS({
   "node_modules/which/lib/index.js"(exports2, module2) {
     var { isexe, sync: isexeSync } = require_cjs();
-    var { join: join4, delimiter, sep: sep2, posix } = require("path");
+    var { join: join4, delimiter, sep, posix } = require("path");
     var isWindows2 = process.platform === "win32";
-    var rSlash = new RegExp(`[${posix.sep}${sep2 === posix.sep ? "" : sep2}]`.replace(/(\\)/g, "\\$1"));
+    var rSlash = new RegExp(`[${posix.sep}${sep === posix.sep ? "" : sep}]`.replace(/(\\)/g, "\\$1"));
     var rRel = new RegExp(`^\\.${rSlash.source}`);
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
     var getPathInfo = (cmd, {
@@ -4839,91 +4839,24 @@ var require_lib = __commonJS({
 });
 
 // src/index.ts
-var import_child_process = require("child_process");
-var import_util = require("util");
+var import_child_process2 = require("child_process");
+var import_util2 = require("util");
 
 // src/options.ts
-var fs3 = __toESM(require("fs"));
-var path3 = __toESM(require("path"));
-
-// src/utils.ts
 var fs2 = __toESM(require("fs"));
-var os2 = __toESM(require("os"));
 var path2 = __toESM(require("path"));
 
-// src/logger.ts
-var import_fs = __toESM(require("fs"));
-var import_path = __toESM(require("path"));
-var import_os = __toESM(require("os"));
-var LogLevel = /* @__PURE__ */ ((LogLevel2) => {
-  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
-  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
-  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
-  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
-  return LogLevel2;
-})(LogLevel || {});
-var LOG_FILE = import_path.default.join(import_os.default.homedir(), ".wakatime", "claude-code.log");
-var Logger = class {
-  constructor(level) {
-    this.level = 1 /* INFO */;
-    if (level !== void 0) this.setLevel(level);
-  }
-  getLevel() {
-    return this.level;
-  }
-  setLevel(level) {
-    this.level = level;
-  }
-  log(level, msg) {
-    if (level >= this.level) {
-      msg = `[${(/* @__PURE__ */ new Date()).toISOString()}][${LogLevel[level]}] ${msg}
-`;
-      import_fs.default.mkdirSync(import_path.default.dirname(LOG_FILE), { recursive: true });
-      import_fs.default.appendFileSync(LOG_FILE, msg);
-    }
-  }
-  debug(msg) {
-    this.log(0 /* DEBUG */, msg);
-  }
-  debugException(msg) {
-    if (msg.message !== void 0) {
-      this.log(0 /* DEBUG */, msg.message);
-    } else {
-      this.log(0 /* DEBUG */, msg.toString());
-    }
-  }
-  info(msg) {
-    this.log(1 /* INFO */, msg);
-  }
-  warn(msg) {
-    this.log(2 /* WARN */, msg);
-  }
-  warnException(msg) {
-    if (msg.message !== void 0) {
-      this.log(2 /* WARN */, msg.message);
-    } else {
-      this.log(2 /* WARN */, msg.toString());
-    }
-  }
-  error(msg) {
-    this.log(3 /* ERROR */, msg);
-  }
-  errorException(msg) {
-    if (msg.message !== void 0) {
-      this.log(3 /* ERROR */, msg.message);
-    } else {
-      this.log(3 /* ERROR */, msg.toString());
-    }
-  }
-};
-var global = globalThis;
-var logger = global.logger ?? new Logger();
-global.logger = logger;
-
 // src/utils.ts
+var fs = __toESM(require("fs"));
+var os = __toESM(require("os"));
+var path = __toESM(require("path"));
+var crypto = __toESM(require("crypto"));
+var import_child_process = require("child_process");
+var import_util = require("util");
+var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
 function parseInput() {
   try {
-    const stdinData = fs2.readFileSync(0, "utf-8");
+    const stdinData = fs.readFileSync(0, "utf-8");
     if (stdinData.trim()) {
       const input = JSON.parse(stdinData);
       return input;
@@ -4933,47 +4866,31 @@ function parseInput() {
   }
   return void 0;
 }
-function getStateFile(inp) {
-  const transcriptPath = getStateTranscriptPath(inp);
-  if (transcriptPath) return `${transcriptPath}.wakatime`;
-  return path2.join(getHomeDirectory(), ".wakatime", "claude-code", `${sanitizeFileName(getFallbackStateId(inp))}.wakatime`);
+function getStateFile() {
+  const key = crypto.createHash("sha1").update(process.cwd()).digest("hex").slice(0, 16);
+  return path.join(getHomeDirectory(), ".wakatime", "junie-wakatime", `${key}.wakatime`);
 }
 function shouldSendHeartbeat(inp) {
   if (!inp) return false;
   try {
-    const last = JSON.parse(fs2.readFileSync(getStateFile(inp), "utf-8")).lastHeartbeatAt ?? timestamp();
+    const last = JSON.parse(fs.readFileSync(getStateFile(), "utf-8")).lastHeartbeatAt ?? timestamp();
     return timestamp() - last >= 60;
   } catch {
     return true;
   }
 }
-async function updateState(inp) {
-  if (!inp) return;
-  const file = getStateFile(inp);
-  await fs2.promises.mkdir(path2.dirname(file), { recursive: true });
-  await fs2.promises.writeFile(file, JSON.stringify({ lastHeartbeatAt: timestamp() }, null, 2));
+async function updateState() {
+  const file = getStateFile();
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, JSON.stringify({ lastHeartbeatAt: timestamp() }, null, 2));
 }
-async function getClaudeVersion(inp) {
-  const transcriptPath = inp?.transcript_path?.trim();
-  if (!transcriptPath) {
-    return "";
-  }
-  let content;
+async function getEditorVersion() {
   try {
-    content = fs2.readFileSync(transcriptPath, "utf-8");
+    const { stdout } = await execFileAsync("junie", ["--version"], { timeout: 3e3 });
+    return stdout.toString().trim();
   } catch {
     return "";
   }
-  for (const logLine of content.split("\n")) {
-    if (!logLine.trim()) continue;
-    try {
-      const log = JSON.parse(logLine);
-      if (log.version) return log.version;
-    } catch (err) {
-      logger.warnException(err);
-    }
-  }
-  return "";
 }
 function formatArguments(binary, args) {
   let clone = args.slice(0);
@@ -4988,11 +4905,11 @@ function formatArguments(binary, args) {
   return newCmds.join(" ");
 }
 function isWindows() {
-  return os2.platform() === "win32";
+  return os.platform() === "win32";
 }
 function getHomeDirectory() {
   let home = process.env.WAKATIME_HOME;
-  if (home && home.trim() && fs2.existsSync(home.trim())) return home.trim();
+  if (home && home.trim() && fs.existsSync(home.trim())) return home.trim();
   return process.env[isWindows() ? "USERPROFILE" : "HOME"] || process.cwd();
 }
 function buildOptions(stdin) {
@@ -5009,95 +4926,6 @@ function buildOptions(stdin) {
 }
 function timestamp() {
   return Date.now() / 1e3;
-}
-function getStateTranscriptPath(inp) {
-  const transcriptPath = inp.transcript_path?.trim();
-  const parentTranscriptPath = getParentStateTranscriptPath(inp);
-  if (parentTranscriptPath) return parentTranscriptPath;
-  if (transcriptPath && directoryExists(path2.dirname(transcriptPath))) return transcriptPath;
-  return void 0;
-}
-function getParentStateTranscriptPath(inp) {
-  const transcriptPath = inp.transcript_path?.trim();
-  if (inp.hook_event_name === "SubagentStop" && inp.agent_transcript_path && transcriptPath && directoryExists(path2.dirname(transcriptPath))) {
-    return transcriptPath;
-  }
-  const parentSessionId = getInputParentSessionId(inp);
-  if (parentSessionId && transcriptPath) {
-    const projectDir = getClaudeProjectDirectoryFromTranscriptPath(transcriptPath);
-    if (projectDir && directoryExists(projectDir)) return path2.join(projectDir, `${parentSessionId}.jsonl`);
-  }
-  const parentFromPath = getParentTranscriptPathFromSubagentPath(transcriptPath);
-  if (parentFromPath && directoryExists(path2.dirname(parentFromPath))) return parentFromPath;
-  return void 0;
-}
-function getParentTranscriptPathFromSubagentPath(transcriptPath) {
-  if (!transcriptPath) return void 0;
-  const normalized = path2.resolve(transcriptPath);
-  const parts = normalized.split(path2.sep);
-  const subagentsIndex = parts.lastIndexOf("subagents");
-  if (subagentsIndex < 2) return void 0;
-  const parentSessionId = parts[subagentsIndex - 1];
-  const projectDir = joinPathParts(parts.slice(0, subagentsIndex - 1));
-  return path2.join(projectDir, `${parentSessionId}.jsonl`);
-}
-function getClaudeProjectDirectoryFromTranscriptPath(transcriptPath) {
-  if (!transcriptPath) return void 0;
-  const normalized = path2.resolve(transcriptPath);
-  const marker = `${path2.sep}.claude${path2.sep}projects${path2.sep}`;
-  const index = normalized.indexOf(marker);
-  if (index === -1) return void 0;
-  const afterProjects = normalized.substring(index + marker.length);
-  const projectDir = afterProjects.split(path2.sep)[0];
-  if (!projectDir) return void 0;
-  return path2.join(normalized.substring(0, index + marker.length - 1), projectDir);
-}
-function getSidechainParentUuid(inp) {
-  const inputParentUuid = inp.parentUuid || inp.parent_uuid;
-  if (inputParentUuid) return inputParentUuid;
-  const transcriptPath = inp.transcript_path?.trim();
-  if (!isSidechainInput(inp) || !transcriptPath || !fs2.existsSync(transcriptPath)) return void 0;
-  let content;
-  try {
-    content = fs2.readFileSync(transcriptPath, "utf-8");
-  } catch {
-    return void 0;
-  }
-  for (const logLine of content.split("\n")) {
-    if (!logLine.trim()) continue;
-    try {
-      const log = JSON.parse(logLine);
-      if (log.isSidechain && log.parentUuid) return log.parentUuid;
-    } catch (err) {
-      logger.warnException(err);
-    }
-  }
-  return void 0;
-}
-function directoryExists(dir) {
-  try {
-    return fs2.statSync(dir).isDirectory();
-  } catch {
-    return false;
-  }
-}
-function getFallbackStateId(inp) {
-  const parentUuid = getSidechainParentUuid(inp);
-  if (parentUuid) return `parent-${parentUuid}`;
-  return inp.session_id || "unknown";
-}
-function getInputParentSessionId(inp) {
-  return inp.parentSessionId || inp.parent_session_id;
-}
-function isSidechainInput(inp) {
-  return inp.isSidechain === true || inp.isSideChain === true || inp.hook_event_name === "SubagentStop";
-}
-function joinPathParts(parts) {
-  if (parts.length && parts[0] === "") return path2.join(path2.sep, ...parts.slice(1));
-  return path2.join(...parts);
-}
-function sanitizeFileName(name) {
-  return name.replace(/[^A-Za-z0-9._-]/g, "_").substring(0, 255);
 }
 function wrapArg(arg) {
   if (arg.indexOf(" ") > -1) return '"' + arg.replace(/"/g, '\\"') + '"';
@@ -5116,23 +4944,23 @@ function obfuscateKey(key) {
 var Options = class {
   constructor() {
     const home = getHomeDirectory();
-    const wakaFolder = path3.join(home, ".wakatime");
+    const wakaFolder = path2.join(home, ".wakatime");
     try {
-      if (!fs3.existsSync(wakaFolder)) {
-        fs3.mkdirSync(wakaFolder, { recursive: true });
+      if (!fs2.existsSync(wakaFolder)) {
+        fs2.mkdirSync(wakaFolder, { recursive: true });
       }
       this.resourcesLocation = wakaFolder;
     } catch (e) {
       console.error(e);
       throw e;
     }
-    this.configFile = path3.join(home, ".wakatime.cfg");
-    this.internalConfigFile = path3.join(this.resourcesLocation, "wakatime-internal.cfg");
-    this.logFile = path3.join(this.resourcesLocation, "wakatime.log");
+    this.configFile = path2.join(home, ".wakatime.cfg");
+    this.internalConfigFile = path2.join(this.resourcesLocation, "wakatime-internal.cfg");
+    this.logFile = path2.join(this.resourcesLocation, "wakatime.log");
   }
   getSetting(section, key, internal) {
     try {
-      const content = fs3.readFileSync(this.getConfigFile(internal ?? false), "utf-8");
+      const content = fs2.readFileSync(this.getConfigFile(internal ?? false), "utf-8");
       if (content.trim()) {
         let currentSection = "";
         let lines = content.split("\n");
@@ -5156,7 +4984,7 @@ var Options = class {
   }
   setSetting(section, key, val, internal) {
     const configFile = this.getConfigFile(internal);
-    fs3.readFile(configFile, "utf-8", (err, content) => {
+    fs2.readFile(configFile, "utf-8", (err, content) => {
       if (err) content = "";
       let contents = [];
       let currentSection = "";
@@ -5192,14 +5020,14 @@ var Options = class {
         }
         contents.push(this.removeNulls(key + " = " + val));
       }
-      fs3.writeFile(configFile, contents.join("\n"), (err2) => {
+      fs2.writeFile(configFile, contents.join("\n"), (err2) => {
         if (err2) throw err2;
       });
     });
   }
   setSettings(section, settings, internal) {
     const configFile = this.getConfigFile(internal);
-    fs3.readFile(configFile, "utf-8", (err, content) => {
+    fs2.readFile(configFile, "utf-8", (err, content) => {
       if (err) content = "";
       let contents = [];
       let currentSection = "";
@@ -5248,7 +5076,7 @@ var Options = class {
           found[setting.key] = true;
         }
       });
-      fs3.writeFile(configFile, contents.join("\n"), (err2) => {
+      fs2.writeFile(configFile, contents.join("\n"), (err2) => {
         if (err2) throw err2;
       });
     });
@@ -5276,12 +5104,12 @@ var VERSION = "4.1.0";
 // src/dependencies.ts
 var import_adm_zip = __toESM(require_adm_zip());
 var child_process = __toESM(require("child_process"));
-var fs4 = __toESM(require("fs"));
+var fs3 = __toESM(require("fs"));
 var http = __toESM(require("http"));
 var https = __toESM(require("https"));
 var net = __toESM(require("net"));
-var os3 = __toESM(require("os"));
-var path4 = __toESM(require("path"));
+var os2 = __toESM(require("os"));
+var path3 = __toESM(require("path"));
 var semver = __toESM(require_semver2());
 var import_promises = require("stream/promises");
 var tls = __toESM(require("tls"));
@@ -5302,7 +5130,7 @@ var Dependencies = class {
   }
   getRequestHeaders() {
     return {
-      "User-Agent": "github.com/wakatime/claude-code-wakatime"
+      "User-Agent": "github.com/profiluefter/junie-wakatime"
     };
   }
   getProxyAuthorizationHeader(proxyUrl) {
@@ -5317,7 +5145,7 @@ var Dependencies = class {
       rejectUnauthorized,
       servername: proxyUrl.hostname
     }) : net.connect(proxyPort, proxyUrl.hostname);
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve, reject) => {
       const auth = this.getProxyAuthorizationHeader(proxyUrl);
       const cleanup = () => {
         baseSocket.removeListener("error", onError);
@@ -5338,7 +5166,7 @@ var Dependencies = class {
           reject(new Error(`Proxy CONNECT failed: ${statusLine}`));
           return;
         }
-        resolve2(baseSocket);
+        resolve(baseSocket);
       };
       const connectRequest = `CONNECT ${targetUrl.hostname}:${targetUrl.port || 443} HTTP/1.1\r
 Host: ${targetUrl.hostname}:${targetUrl.port || 443}\r
@@ -5364,7 +5192,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     const proxy = options2?.proxy ? new URL(options2.proxy) : void 0;
     const headers = { ...options2?.headers };
     const rejectUnauthorized = !options2?.noSSLVerify;
-    return new Promise(async (resolve2, reject) => {
+    return new Promise(async (resolve, reject) => {
       let req;
       try {
         if (proxy) {
@@ -5388,7 +5216,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
               agent: false,
               createConnection: () => secureSocket
             },
-            (response) => resolve2(response)
+            (response) => resolve(response)
           );
         } else {
           const isHttpsRequest = proxy ? proxy.protocol === "https:" : targetUrl.protocol === "https:";
@@ -5409,7 +5237,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
             requestOptions.rejectUnauthorized = rejectUnauthorized;
             requestOptions.servername = requestUrl.hostname;
           }
-          req = requestModule.request(requestOptions, (response) => resolve2(response));
+          req = requestModule.request(requestOptions, (response) => resolve(response));
         }
         req.once("error", reject);
         req.end();
@@ -5450,7 +5278,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
       response.resume();
       throw new Error(`Unexpected status code ${statusCode}`);
     }
-    await (0, import_promises.pipeline)(response, fs4.createWriteStream(outputFile));
+    await (0, import_promises.pipeline)(response, fs3.createWriteStream(outputFile));
   }
   getCliLocation() {
     if (this.cliLocation) return this.cliLocation;
@@ -5460,7 +5288,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     const arch2 = this.architecture();
     const ext = isWindows() ? ".exe" : "";
     const binary = `wakatime-cli-${osname}-${arch2}${ext}`;
-    this.cliLocation = path4.join(this.resourcesLocation, binary);
+    this.cliLocation = path3.join(this.resourcesLocation, binary);
     return this.cliLocation;
   }
   getCliLocationGlobal() {
@@ -5475,7 +5303,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
   }
   isCliInstalled() {
     if (this.cliInstalled) return true;
-    this.cliInstalled = fs4.existsSync(this.getCliLocation());
+    this.cliInstalled = fs3.existsSync(this.getCliLocation());
     return this.cliInstalled;
   }
   checkAndInstallCli(callback) {
@@ -5575,7 +5403,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
   installCli(callback) {
     this.logger.debug(`Downloading wakatime-cli from GitHub...`);
     const url = this.cliDownloadUrl();
-    let zipFile = path4.join(this.resourcesLocation, "wakatime-cli" + this.randStr() + ".zip");
+    let zipFile = path3.join(this.resourcesLocation, "wakatime-cli" + this.randStr() + ".zip");
     this.downloadFile(
       url,
       zipFile,
@@ -5587,7 +5415,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
   }
   isSymlink(file) {
     try {
-      return fs4.lstatSync(file).isSymbolicLink();
+      return fs3.lstatSync(file).isSymbolicLink();
     } catch (_) {
     }
     return false;
@@ -5603,21 +5431,21 @@ ${auth ? `Proxy-Authorization: ${auth}\r
         const cli = this.getCliLocation();
         try {
           this.logger.debug("Chmod 755 wakatime-cli...");
-          fs4.chmodSync(cli, 493);
+          fs3.chmodSync(cli, 493);
         } catch (e) {
           this.logger.warnException(e);
         }
         const ext = isWindows() ? ".exe" : "";
-        const link = path4.join(this.resourcesLocation, `wakatime-cli${ext}`);
+        const link = path3.join(this.resourcesLocation, `wakatime-cli${ext}`);
         if (!this.isSymlink(link)) {
           try {
             this.logger.debug(`Create symlink from wakatime-cli to ${cli}`);
-            fs4.symlinkSync(cli, link);
+            fs3.symlinkSync(cli, link);
           } catch (e) {
             this.logger.warnException(e);
             try {
-              fs4.copyFileSync(cli, link);
-              fs4.chmodSync(link, 493);
+              fs3.copyFileSync(cli, link);
+              fs3.chmodSync(link, 493);
             } catch (e2) {
               this.logger.warnException(e2);
             }
@@ -5629,20 +5457,20 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     });
   }
   backupCli() {
-    if (fs4.existsSync(this.getCliLocation())) {
-      fs4.renameSync(this.getCliLocation(), `${this.getCliLocation()}.backup`);
+    if (fs3.existsSync(this.getCliLocation())) {
+      fs3.renameSync(this.getCliLocation(), `${this.getCliLocation()}.backup`);
     }
   }
   restoreCli() {
     const backup = `${this.getCliLocation()}.backup`;
-    if (fs4.existsSync(backup)) {
-      fs4.renameSync(backup, this.getCliLocation());
+    if (fs3.existsSync(backup)) {
+      fs3.renameSync(backup, this.getCliLocation());
     }
   }
   removeCli() {
     const backup = `${this.getCliLocation()}.backup`;
-    if (fs4.existsSync(backup)) {
-      fs4.unlinkSync(backup);
+    if (fs3.existsSync(backup)) {
+      fs3.unlinkSync(backup);
     }
   }
   downloadFile(url, outputFile, callback, error) {
@@ -5661,18 +5489,18 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     });
   }
   unzip(file, outputDir, callback) {
-    if (fs4.existsSync(file)) {
+    if (fs3.existsSync(file)) {
       try {
         let zip = new import_adm_zip.default(file);
         zip.extractAllTo(outputDir, true);
-        fs4.unlinkSync(file);
+        fs3.unlinkSync(file);
         callback(true);
         return;
       } catch (e) {
         this.logger.warnException(e);
       }
       try {
-        fs4.unlinkSync(file);
+        fs3.unlinkSync(file);
       } catch (e2) {
         this.logger.warnException(e2);
       }
@@ -5685,7 +5513,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     if (!legacyOS) return;
     const version = legacyOS.find((spec) => {
       try {
-        return semver.lt(os3.release(), spec.kernelLessThan);
+        return semver.lt(os2.release(), spec.kernelLessThan);
       } catch (e) {
         return false;
       }
@@ -5693,13 +5521,13 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     return version?.tag;
   }
   architecture() {
-    const arch2 = os3.arch();
+    const arch2 = os2.arch();
     if (arch2.indexOf("32") > -1) return "386";
     if (arch2.indexOf("x64") > -1) return "amd64";
     return arch2;
   }
   osName() {
-    let osname = os3.platform();
+    let osname = os2.platform();
     if (osname == "win32") osname = "windows";
     return osname;
   }
@@ -5737,7 +5565,7 @@ ${auth ? `Proxy-Authorization: ${auth}\r
     return `${this.githubDownloadUrl}/wakatime-cli-${osname}-${arch2}.zip`;
   }
   reportMissingPlatformSupport(osname, architecture) {
-    const url = `https://api.wakatime.com/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=claude-code`;
+    const url = `https://api.wakatime.com/api/v1/cli-missing?osname=${osname}&architecture=${architecture}&plugin=junie-cli`;
     const proxy = this.options.getSetting("settings", "proxy");
     const noSSLVerify = this.options.getSetting("settings", "no_ssl_verify");
     this.requestWithRedirects(url, {
@@ -5754,15 +5582,84 @@ ${auth ? `Proxy-Authorization: ${auth}\r
   }
 };
 
+// src/logger.ts
+var import_fs = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+var import_os = __toESM(require("os"));
+var LogLevel = /* @__PURE__ */ ((LogLevel2) => {
+  LogLevel2[LogLevel2["DEBUG"] = 0] = "DEBUG";
+  LogLevel2[LogLevel2["INFO"] = 1] = "INFO";
+  LogLevel2[LogLevel2["WARN"] = 2] = "WARN";
+  LogLevel2[LogLevel2["ERROR"] = 3] = "ERROR";
+  return LogLevel2;
+})(LogLevel || {});
+var LOG_FILE = import_path.default.join(import_os.default.homedir(), ".wakatime", "junie-wakatime.log");
+var Logger = class {
+  constructor(level) {
+    this.level = 1 /* INFO */;
+    if (level !== void 0) this.setLevel(level);
+  }
+  getLevel() {
+    return this.level;
+  }
+  setLevel(level) {
+    this.level = level;
+  }
+  log(level, msg) {
+    if (level >= this.level) {
+      msg = `[${(/* @__PURE__ */ new Date()).toISOString()}][${LogLevel[level]}] ${msg}
+`;
+      import_fs.default.mkdirSync(import_path.default.dirname(LOG_FILE), { recursive: true });
+      import_fs.default.appendFileSync(LOG_FILE, msg);
+    }
+  }
+  debug(msg) {
+    this.log(0 /* DEBUG */, msg);
+  }
+  debugException(msg) {
+    if (msg.message !== void 0) {
+      this.log(0 /* DEBUG */, msg.message);
+    } else {
+      this.log(0 /* DEBUG */, msg.toString());
+    }
+  }
+  info(msg) {
+    this.log(1 /* INFO */, msg);
+  }
+  warn(msg) {
+    this.log(2 /* WARN */, msg);
+  }
+  warnException(msg) {
+    if (msg.message !== void 0) {
+      this.log(2 /* WARN */, msg.message);
+    } else {
+      this.log(2 /* WARN */, msg.toString());
+    }
+  }
+  error(msg) {
+    this.log(3 /* ERROR */, msg);
+  }
+  errorException(msg) {
+    if (msg.message !== void 0) {
+      this.log(3 /* ERROR */, msg.message);
+    } else {
+      this.log(3 /* ERROR */, msg.toString());
+    }
+  }
+};
+var global = globalThis;
+var logger = global.logger ?? new Logger();
+global.logger = logger;
+
 // src/index.ts
 var options = new Options();
 var deps = new Dependencies(options, logger);
-var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
-async function sendHeartbeat(inp) {
-  const projectFolder = inp?.cwd;
-  const claudeVersion = await getClaudeVersion(inp);
+var execFileAsync2 = (0, import_util2.promisify)(import_child_process2.execFile);
+async function sendHeartbeat() {
+  const projectFolder = process.cwd();
+  const editorVersion = await getEditorVersion();
   const wakatime_cli = deps.getCliLocation();
-  const args = ["--sync-ai-activity", "--plugin", `claude-code/${claudeVersion} claude-code-wakatime/${VERSION}`];
+  const args = ["--sync-ai-activity", "--plugin", `junie-cli/${editorVersion} junie-wakatime/${VERSION}`];
   if (projectFolder) {
     args.push("--project-folder");
     args.push(projectFolder);
@@ -5770,7 +5667,7 @@ async function sendHeartbeat(inp) {
   logger.debug(`Syncing AI activity: ${formatArguments(wakatime_cli, args)}`);
   const execOptions = buildOptions();
   try {
-    const { stdout, stderr } = await execFileAsync(wakatime_cli, args, execOptions);
+    const { stdout, stderr } = await execFileAsync2(wakatime_cli, args, execOptions);
     const output = stdout.toString().trim() + stderr.toString().trim();
     if (output) logger.error(output);
   } catch (e) {
@@ -5786,8 +5683,8 @@ async function main() {
     if (inp) logger.debug(JSON.stringify(inp, null, 2));
     deps.checkAndInstallCli();
     if (shouldSendHeartbeat(inp)) {
-      if (await sendHeartbeat(inp)) {
-        await updateState(inp);
+      if (await sendHeartbeat()) {
+        await updateState();
       }
     }
   } catch (err) {
