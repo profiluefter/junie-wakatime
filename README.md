@@ -28,6 +28,13 @@ This clones the repo into `~/.junie/extensions/` and makes the `scripts/run` lau
 install/update logic available locally, but **it does not start sending heartbeats by itself** — you still need to
 add the hooks snippet below.
 
+If the installed extension's checkout process doesn't preserve executable permissions, `scripts/run` may not be
+marked executable, causing the hooks below to silently fail. If that happens, make it executable manually:
+
+```bash
+chmod +x <path-to>/scripts/run
+```
+
 ### 2. Add the hooks snippet to `~/.junie/config.json`
 
 Junie CLI extensions cannot currently bundle hooks (only Agent Skills, MCP servers, Subagents, Custom slash
