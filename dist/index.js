@@ -4887,7 +4887,8 @@ async function updateState() {
 async function getEditorVersion() {
   try {
     const { stdout } = await execFileAsync("junie", ["--version"], { timeout: 3e3 });
-    return stdout.toString().trim();
+    const firstLine = stdout.toString().split(/\r?\n/)[0] ?? "";
+    return firstLine.replace(/[\x00-\x1f\x7f]/g, "").trim();
   } catch {
     return "";
   }

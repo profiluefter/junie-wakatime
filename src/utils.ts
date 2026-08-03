@@ -48,7 +48,13 @@ export async function updateState(): Promise<void> {
 export async function getEditorVersion(): Promise<string> {
   try {
     const { stdout } = await execFileAsync('junie', ['--version'], { timeout: 3000 });
-    return stdout.toString().trim();
+    // `junie --version` can print multiple lines (e.g. a JVM/OpenJDK banner on
+    // some setups). Only the first line is used, and any remaining control
+    // characters are stripped, since this value ends up in the `--plugin`
+    // argument that wakatime-cli uses to build the HTTP User-Agent header,
+    // which cannot contain newlines or other invalid header characters.
+    const firstLine = stdout.toString().split(/\r?\n/)[0] ?? '';
+    return firstLine.replace(/[\x00-\x1f\x7f]/g, '').trim();
   } catch {
     return '';
   }
