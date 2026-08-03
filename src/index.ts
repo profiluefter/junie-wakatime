@@ -6,20 +6,19 @@ import { Options } from './options';
 import { VERSION } from './version';
 import { Dependencies } from './dependencies';
 import { logger, LogLevel } from './logger';
-import { Input } from './types';
-import { buildOptions, formatArguments, getClaudeVersion, parseInput, shouldSendHeartbeat, updateState } from './utils';
+import { buildOptions, formatArguments, getEditorVersion, parseInput, shouldSendHeartbeat, updateState } from './utils';
 
 const options = new Options();
 const deps = new Dependencies(options, logger);
 const execFileAsync = promisify(execFile);
 
-async function sendHeartbeat(inp: Input | undefined): Promise<boolean> {
-  const projectFolder = inp?.cwd;
-  const claudeVersion = await getClaudeVersion(inp);
+async function sendHeartbeat(): Promise<boolean> {
+  const projectFolder = process.cwd();
+  const editorVersion = await getEditorVersion();
 
   const wakatime_cli = deps.getCliLocation();
 
-  const args: string[] = ['--sync-ai-activity', '--plugin', `claude-code/${claudeVersion} claude-code-wakatime/${VERSION}`];
+  const args: string[] = ['--sync-ai-activity', '--plugin', `junie-cli/${editorVersion} junie-wakatime/${VERSION}`];
   if (projectFolder) {
     args.push('--project-folder');
     args.push(projectFolder);
@@ -51,8 +50,8 @@ async function main() {
     deps.checkAndInstallCli();
 
     if (shouldSendHeartbeat(inp)) {
-      if (await sendHeartbeat(inp)) {
-        await updateState(inp);
+      if (await sendHeartbeat()) {
+        await updateState();
       }
     }
   } catch (err) {
