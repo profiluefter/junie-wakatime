@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-ROOT="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+# Resolve plugin root from this script's location: <root>/scripts/run
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 # Avoid project-specific NODE_OPTIONS breaking plugin hooks.
 if [ -n "${NODE_OPTIONS:-}" ]; then
@@ -24,7 +25,7 @@ if command -v nix >/dev/null 2>&1; then
 fi
 
 echo "Error: Node.js not found. Is node in your PATH?
-- The WakaTime Claude Code plugin requires Node to run.
+- The WakaTime Junie plugin requires Node to run.
 - set NODE_BIN=/absolute/path/to/node, or if using NixOS
 - ensure 'nix' is available and flakes are enabled." >&2
 exit 127
