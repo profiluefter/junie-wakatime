@@ -7,6 +7,7 @@ const packagePath = path.join(__dirname, '..', 'package.json');
 const versionFilePath = path.join(__dirname, '..', 'src', 'version.ts');
 const marketplaceFilePath = path.join(__dirname, '..', '.claude-plugin', 'marketplace.json');
 const pluginFilePath = path.join(__dirname, '..', '.claude-plugin', 'plugin.json');
+const junieMarketplaceFilePath = path.join(__dirname, '..', '.junie-extension', 'marketplace.json');
 
 try {
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
@@ -28,6 +29,11 @@ export const VERSION = '${version}';
   plugin.version = version;
   fs.writeFileSync(pluginFilePath, JSON.stringify(plugin, null, 2));
   console.log(`Generated plugin.json with version ${version}`);
+
+  const junieMarketplace = JSON.parse(fs.readFileSync(junieMarketplaceFilePath, 'utf8'));
+  junieMarketplace.extensions[0].version = version;
+  fs.writeFileSync(junieMarketplaceFilePath, JSON.stringify(junieMarketplace, null, 2) + '\n');
+  console.log(`Generated .junie-extension/marketplace.json with version ${version}`);
 } catch (error) {
   console.error('Error generating version file:', error);
   process.exit(1);

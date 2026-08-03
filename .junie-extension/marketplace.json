@@ -6,7 +6,7 @@
   "owner": {
     "name": "profiluefter"
   },
-  "plugins": [
+  "extensions": [
     {
       "name": "junie-wakatime",
       "source": "./",

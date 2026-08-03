@@ -1,14 +1,16 @@
 {
-  "name": "claude-code-wakatime",
-  "description": "WakaTime plugin for Claude Code - Track your AI usage, lines of code generated, and time spent prompting AI",
+  "name": "junie-wakatime",
+  "description": "WakaTime plugin for Junie CLI - Track your AI usage, lines of code generated, and time spent prompting AI",
   "version": "4.1.0",
   "author": {
-    "name": "WakaTime"
+    "name": "profiluefter"
   },
-  "homepage": "https://github.com/wakatime/claude-code-wakatime",
-  "repository": "https://github.com/wakatime/claude-code-wakatime",
+  "homepage": "https://github.com/profiluefter/junie-wakatime",
+  "repository": "https://github.com/profiluefter/junie-wakatime",
   "license": "BSD-3-Clause",
   "keywords": [
+    "junie",
+    "junie-cli",
     "time-tracking",
     "hooks",
     "productivity",
