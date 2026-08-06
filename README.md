@@ -11,9 +11,12 @@ may want to track later, hence the project name.
 
 ## Installation
 
-Installation has two parts: registering this repo as an extensions marketplace (which downloads `wakatime-cli` and
-the plugin scripts), and manually wiring the hooks into your Junie configuration, since Junie extensions cannot yet
+Installation has two parts: registering this repo as an extensions marketplace (which downloads the plugin
+scripts), and manually wiring the hooks into your Junie configuration, since Junie extensions cannot yet
 bundle hooks (see [Extension manifests](#extension-manifests-metadata-only-today) below).
+
+> **No `wakatime-cli` required.** This extension talks to the WakaTime API directly over HTTPS, so there is no
+> separate binary to download, install, or keep up to date.
 
 ### 1. Add the marketplace and install the extension
 
@@ -24,9 +27,8 @@ In an interactive Junie CLI session:
 /extensions install junie-wakatime
 ```
 
-This clones the repo into `~/.junie/extensions/` and makes the `scripts/run` launcher and `wakatime-cli`
-install/update logic available locally, but **it does not start sending heartbeats by itself** — you still need to
-add the hooks snippet below.
+This clones the repo into `~/.junie/extensions/` and makes the `scripts/run` launcher available locally, but
+**it does not start sending heartbeats by itself** — you still need to add the hooks snippet below.
 
 If the installed extension's checkout process doesn't preserve executable permissions, `scripts/run` may not be
 marked executable, causing the hooks below to silently fail. If that happens, make it executable manually:
@@ -76,10 +78,10 @@ Copy the block below, and replace `<path-to>` with the path to the installed ext
 This exact snippet also lives in [`hooks/junie-config-snippet.json`](hooks/junie-config-snippet.json) in this repo,
 so you can copy it directly instead of retyping it.
 
-* `SessionStart` installs/updates `wakatime-cli` (throttled to a 4h check).
-* `PreToolUse` (scoped to `Edit|Write|Bash`) and `UserPromptSubmit` send activity heartbeats, debounced to once
-  per 60 seconds per project folder.
-* `SessionEnd` sends a final heartbeat.
+- On the very first run, `SessionStart` records a baseline cursor so your existing Junie history is not backfilled.
+- `PreToolUse` (scoped to `Edit|Write|Bash`) and `UserPromptSubmit` parse Junie's session transcripts for new
+  activity and send it as `ai coding` heartbeats, debounced to once per 60 seconds per project folder.
+- `SessionEnd` flushes any remaining activity (it bypasses the debounce so the last events of a session are not lost).
 
 Windows users on `scripts/run.cmd` should point `command` at that file instead.
 
@@ -110,18 +112,37 @@ Visit [https://wakatime.com][wakatime.com] to see your coding activity.
 
 ![Project Overview](https://wakatime.com/static/img/ScreenShots/Screen-Shot-2016-03-21.png)
 
-Heartbeats are sent via `wakatime-cli --sync-ai-activity --plugin "junie-cli/<version> junie-wakatime/<version>"`,
-scoped with `--project-folder` resolved from the hook process's own working directory. The debounce state file is
-keyed by a hash of that project folder path (`~/.wakatime/junie-wakatime/<hash>.wakatime`), since Junie's hook stdin
-does not currently carry a `cwd` or session id.
+Unlike the Claude Code and Codex WakaTime plugins, `wakatime-cli` has no built-in parser for Junie transcripts, so
+its `--sync-ai-activity` mode never produces any Junie heartbeats. Instead, this extension reads Junie's own session
+logs and sends heartbeats **directly to the WakaTime API** — no `wakatime-cli` binary is downloaded or used:
+
+- On each triggering hook it scans `~/.junie/sessions/session-*/events.jsonl` for activity created since the last
+  run (tracked by a cursor in `~/.wakatime/junie-wakatime/ai-last-parsed.json`, so events are never sent twice). On
+  the very first run it only records the current cursor, to avoid backfilling your entire Junie history.
+- It derives three kinds of `ai coding` heartbeat, all tagged with the Junie session id (`ai_session`) so activity
+  from one run is grouped together on your dashboard:
+  - **User prompts** (`UserPromptEvent`) → an `app` heartbeat carrying `ai_prompt_length`.
+  - **LLM token usage** (`LlmResponseMetadataEvent`) → an `app` heartbeat carrying summed `ai_input_tokens` /
+    `ai_output_tokens`.
+  - **File edits** (`AgentPatchCreatedEvent`) → one `file` heartbeat per changed file carrying `ai_line_changes`
+    (added − removed) and a `project` derived from the working directory Junie recorded via
+    `CurrentDirectoryUpdatedEvent`.
+- All new heartbeats are time-sorted and sent in a single bulk `POST {api_url}/users/current/heartbeats.bulk`
+  request authenticated with your API key (`Authorization: Basic base64(api_key)`). The cursor is advanced **only**
+  when the API accepts the batch (HTTP 201/202); on any failure the same events are re-derived and resent next run.
+- `api_key` and `api_url` are read from `~/.wakatime.cfg` (falling back to the `WAKATIME_API_KEY` environment
+  variable), and a `proxy` setting is honored if present.
+
+The per-project debounce state file is keyed by a hash of the hook process's working directory
+(`~/.wakatime/junie-wakatime/<hash>.wakatime`).
 
 ## Extension manifests (metadata-only, today)
 
 This repo ships two marketplace manifests so it can be added as a Junie extensions marketplace right away:
 
-* `.claude-plugin/marketplace.json` + `.claude-plugin/plugin.json` — Junie explicitly recognizes this
+- `.claude-plugin/marketplace.json` + `.claude-plugin/plugin.json` — Junie explicitly recognizes this
   Claude-plugin-compatible manifest format for git-hosted marketplaces.
-* `.junie-extension/marketplace.json` — Junie's native manifest location (best-effort schema, since the exact
+- `.junie-extension/marketplace.json` — Junie's native manifest location (best-effort schema, since the exact
   native format is not fully documented yet).
 
 Both currently list only identity metadata (name, description, version, source) — no bundled skills, MCP servers,
@@ -135,6 +156,12 @@ introduced. The manual `config.json` snippet above is required in the meantime.
 
 ```bash
 npm run watch
+```
+
+Run the tests (session parser, native API client, and an end-to-end hook run against a local fake API server) with:
+
+```bash
+npm test
 ```
 
 ## Troubleshooting
@@ -151,10 +178,10 @@ Look for Junie CLI startup/hook errors in its logs:
 ls ~/.junie/logs/
 ```
 
-Look for errors in the [wakatime-cli][wakatime-cli] log file:
+Look for errors in the extension's own log file:
 
 ```bash
-grep error ~/.wakatime/wakatime.log | grep -v backoff
+grep -i error ~/.wakatime/junie-wakatime.log
 ```
 
 Make sure you have node.js installed and in your `$PATH`:
@@ -166,8 +193,9 @@ node -v
 ## Credits
 
 `junie-wakatime` is a fork of [`wakatime/claude-code-wakatime`][claude-code-wakatime], adapted to Junie CLI's own
-hook/extension model instead of Claude Code's plugin system. The `~/.wakatime.cfg` parsing and `wakatime-cli`
-install/update logic are carried over largely unchanged, since that layer is host-agnostic.
+hook/extension model instead of Claude Code's plugin system. The `~/.wakatime.cfg` parsing is carried over largely
+unchanged, since that layer is host-agnostic. Unlike upstream, this fork sends heartbeats directly to the WakaTime
+API rather than shelling out to a downloaded `wakatime-cli` binary.
 
 This design also draws on [`wakatime/codex-cli-wakatime`][codex-cli-wakatime] as a sibling implementation for
 another CLI-based coding agent.

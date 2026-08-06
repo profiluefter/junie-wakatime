@@ -2,8 +2,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as child_process from 'child_process';
-import { StdioOptions } from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { Input, State } from './types';
@@ -28,6 +26,29 @@ function getStateFile(): string {
   return path.join(getHomeDirectory(), '.wakatime', 'junie-wakatime', `${key}.wakatime`);
 }
 
+function getAILastParsedFile(): string {
+  return path.join(getHomeDirectory(), '.wakatime', 'junie-wakatime', 'ai-last-parsed.json');
+}
+
+// getAILastParsedAt returns the timestamp (unix epoch ms) of the newest Junie
+// transcript event already turned into heartbeats, or undefined on first run.
+export function getAILastParsedAt(): number | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(getAILastParsedFile(), 'utf-8')) as { lastParsedAt?: number };
+    return typeof parsed.lastParsedAt === 'number' ? parsed.lastParsedAt : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// setAILastParsedAt persists the newest parsed Junie transcript timestamp
+// (unix epoch ms) so the same edits are never sent twice.
+export async function setAILastParsedAt(timestampMs: number): Promise<void> {
+  const file = getAILastParsedFile();
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, JSON.stringify({ lastParsedAt: timestampMs }, null, 2));
+}
+
 export function shouldSendHeartbeat(inp?: Input): boolean {
   if (!inp) return false;
 
@@ -50,27 +71,13 @@ export async function getEditorVersion(): Promise<string> {
     const { stdout } = await execFileAsync('junie', ['--version'], { timeout: 3000 });
     // `junie --version` can print multiple lines (e.g. a JVM/OpenJDK banner on
     // some setups). Only the first line is used, and any remaining control
-    // characters are stripped, since this value ends up in the `--plugin`
-    // argument that wakatime-cli uses to build the HTTP User-Agent header,
-    // which cannot contain newlines or other invalid header characters.
+    // characters are stripped, since this value ends up in the User-Agent
+    // header, which cannot contain newlines or other invalid header characters.
     const firstLine = stdout.toString().split(/\r?\n/)[0] ?? '';
     return firstLine.replace(/[\x00-\x1f\x7f]/g, '').trim();
   } catch {
     return '';
   }
-}
-
-export function formatArguments(binary: string, args: string[]): string {
-  let clone = args.slice(0);
-  clone.unshift(wrapArg(binary));
-  let newCmds: string[] = [];
-  let lastCmd = '';
-  for (let i = 0; i < clone.length; i++) {
-    if (lastCmd == '--key') newCmds.push(wrapArg(obfuscateKey(clone[i])));
-    else newCmds.push(wrapArg(clone[i]));
-    lastCmd = clone[i];
-  }
-  return newCmds.join(' ');
 }
 
 export function isWindows(): boolean {
@@ -83,33 +90,6 @@ export function getHomeDirectory(): string {
   return process.env[isWindows() ? 'USERPROFILE' : 'HOME'] || process.cwd();
 }
 
-export function buildOptions(stdin?: boolean): Object {
-  const options: child_process.ExecFileOptions = {
-    windowsHide: true,
-  };
-  if (stdin) {
-    (options as any).stdio = ['pipe', 'pipe', 'pipe'] as StdioOptions;
-  }
-  if (!isWindows() && !process.env.WAKATIME_HOME && !process.env.HOME) {
-    options['env'] = { ...process.env, WAKATIME_HOME: getHomeDirectory() };
-  }
-  return options;
-}
-
 function timestamp() {
   return Date.now() / 1000;
-}
-
-function wrapArg(arg: string): string {
-  if (arg.indexOf(' ') > -1) return '"' + arg.replace(/"/g, '\\"') + '"';
-  return arg;
-}
-
-function obfuscateKey(key: string): string {
-  let newKey = '';
-  if (key) {
-    newKey = key;
-    if (key.length > 4) newKey = 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX' + key.substring(key.length - 4);
-  }
-  return newKey;
 }

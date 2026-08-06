@@ -1,41 +1,78 @@
 #!/usr/bin/env node
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import * as path from 'path';
 import { Options } from './options';
-import { VERSION } from './version';
-import { Dependencies } from './dependencies';
 import { logger, LogLevel } from './logger';
-import { buildOptions, formatArguments, getEditorVersion, parseInput, shouldSendHeartbeat, updateState } from './utils';
+import { collectHeartbeats, JunieHeartbeat } from './junie';
+import { buildUserAgent, sendHeartbeats, WakaHeartbeat } from './wakatime';
+import { getAILastParsedAt, getEditorVersion, parseInput, setAILastParsedAt, shouldSendHeartbeat, updateState } from './utils';
 
 const options = new Options();
-const deps = new Dependencies(options, logger);
-const execFileAsync = promisify(execFile);
 
-async function sendHeartbeat(): Promise<boolean> {
-  const projectFolder = process.cwd();
+const AI_CODING_CATEGORY = 'ai coding';
+
+// projectName derives a WakaTime project name from a working directory, using
+// its final path segment (e.g. /home/me/my-project -> my-project).
+function projectName(projectFolder?: string): string {
+  return projectFolder ? path.basename(projectFolder) : '';
+}
+
+// toWakaHeartbeat maps a parsed Junie heartbeat onto the JSON shape the WakaTime
+// bulk API accepts. File heartbeats carry line changes and a project; app
+// heartbeats carry prompt length or token usage. Every heartbeat is tagged with
+// its Junie ai_session and the 'ai coding' category.
+function toWakaHeartbeat(h: JunieHeartbeat, userAgent: string): WakaHeartbeat {
+  const hb: WakaHeartbeat = {
+    entity: h.entity,
+    type: h.entityType,
+    category: AI_CODING_CATEGORY,
+    time: h.time,
+    ai_session: h.aiSession,
+    user_agent: userAgent,
+  };
+
+  if (h.entityType === 'file') {
+    hb.is_write = true;
+    if (typeof h.aiLineChanges === 'number') hb.ai_line_changes = h.aiLineChanges;
+    const project = projectName(h.projectFolder);
+    if (project) hb.project = project;
+  }
+
+  if (typeof h.aiPromptLength === 'number') hb.ai_prompt_length = h.aiPromptLength;
+  if (typeof h.aiInputTokens === 'number') hb.ai_input_tokens = h.aiInputTokens;
+  if (typeof h.aiOutputTokens === 'number') hb.ai_output_tokens = h.aiOutputTokens;
+
+  return hb;
+}
+
+// syncJunieActivity parses Junie's session transcripts for prompts, token usage,
+// and file edits made since the last run and POSTs them to the WakaTime API as
+// 'ai coding' heartbeats. The parse cursor is advanced only when the send
+// succeeds, so a failed/offline send simply re-derives and resends next run.
+async function syncJunieActivity(): Promise<void> {
+  const lastParsedAt = getAILastParsedAt();
+
+  // On first run, establish a baseline instead of backfilling the entire Junie
+  // history, which would flood the dashboard with old activity.
+  if (lastParsedAt === undefined) {
+    await setAILastParsedAt(Date.now());
+    logger.debug('Initialized Junie AI activity cursor; skipping historical backfill');
+    return;
+  }
+
+  const { heartbeats, maxTimestampMs } = collectHeartbeats(lastParsedAt);
+  if (heartbeats.length === 0) return;
+
   const editorVersion = await getEditorVersion();
+  const userAgent = buildUserAgent(editorVersion);
+  const payload = heartbeats.map((h) => toWakaHeartbeat(h, userAgent));
 
-  const wakatime_cli = deps.getCliLocation();
+  logger.debug(`Sending ${payload.length} Junie AI heartbeat(s) to WakaTime`);
 
-  const args: string[] = ['--sync-ai-activity', '--plugin', `junie-cli/${editorVersion} junie-wakatime/${VERSION}`];
-  if (projectFolder) {
-    args.push('--project-folder');
-    args.push(projectFolder);
+  const sent = await sendHeartbeats(payload, options);
+  if (sent && maxTimestampMs > lastParsedAt) {
+    await setAILastParsedAt(maxTimestampMs);
   }
-
-  logger.debug(`Syncing AI activity: ${formatArguments(wakatime_cli, args)}`);
-
-  const execOptions = buildOptions();
-  try {
-    const { stdout, stderr } = await execFileAsync(wakatime_cli, args, execOptions);
-    const output = stdout.toString().trim() + stderr.toString().trim();
-    if (output) logger.error(output);
-  } catch (e) {
-    if (e) logger.error(e.toString());
-  }
-
-  return true;
 }
 
 async function main() {
@@ -47,12 +84,12 @@ async function main() {
   try {
     if (inp) logger.debug(JSON.stringify(inp, null, 2));
 
-    deps.checkAndInstallCli();
-
-    if (shouldSendHeartbeat(inp)) {
-      if (await sendHeartbeat()) {
-        await updateState();
-      }
+    // Always flush on SessionEnd so the final edits of a session are not lost
+    // to the per-project debounce.
+    const isSessionEnd = inp?.hook_event_name === 'SessionEnd';
+    if (inp && (shouldSendHeartbeat(inp) || isSessionEnd)) {
+      await syncJunieActivity();
+      await updateState();
     }
   } catch (err) {
     logger.errorException(err);
