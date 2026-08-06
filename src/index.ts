@@ -5,7 +5,15 @@ import { Options } from './options';
 import { logger, LogLevel } from './logger';
 import { collectHeartbeats, JunieHeartbeat } from './junie';
 import { buildUserAgent, sendHeartbeats, WakaHeartbeat } from './wakatime';
-import { getAILastParsedAt, getEditorVersion, parseInput, setAILastParsedAt, shouldSendHeartbeat, updateState } from './utils';
+import {
+  getAILastParsedAt,
+  getEditorVersion,
+  parseInput,
+  setAILastParsedAt,
+  shouldSendHeartbeat,
+  updateState,
+  withAiCursorLock,
+} from './utils';
 
 const options = new Options();
 
@@ -49,30 +57,39 @@ function toWakaHeartbeat(h: JunieHeartbeat, userAgent: string): WakaHeartbeat {
 // and file edits made since the last run and POSTs them to the WakaTime API as
 // 'ai coding' heartbeats. The parse cursor is advanced only when the send
 // succeeds, so a failed/offline send simply re-derives and resends next run.
-async function syncJunieActivity(): Promise<void> {
-  const lastParsedAt = getAILastParsedAt();
+// Returns true only when there was nothing to send, or everything sent
+// successfully, so the caller can decide whether it's safe to reset the
+// per-project debounce.
+async function syncJunieActivity(): Promise<boolean> {
+  // Hooks run with "async": true and can fire concurrently, so the whole
+  // read-cursor -> collect -> send -> write-cursor cycle is serialized across
+  // processes to avoid two runs sending duplicate heartbeats for the same events.
+  return withAiCursorLock(async () => {
+    const lastParsedAt = getAILastParsedAt();
 
-  // On first run, establish a baseline instead of backfilling the entire Junie
-  // history, which would flood the dashboard with old activity.
-  if (lastParsedAt === undefined) {
-    await setAILastParsedAt(Date.now());
-    logger.debug('Initialized Junie AI activity cursor; skipping historical backfill');
-    return;
-  }
+    // On first run, establish a baseline instead of backfilling the entire Junie
+    // history, which would flood the dashboard with old activity.
+    if (lastParsedAt === undefined) {
+      await setAILastParsedAt(Date.now());
+      logger.debug('Initialized Junie AI activity cursor; skipping historical backfill');
+      return true;
+    }
 
-  const { heartbeats, maxTimestampMs } = collectHeartbeats(lastParsedAt);
-  if (heartbeats.length === 0) return;
+    const { heartbeats, maxTimestampMs } = collectHeartbeats(lastParsedAt);
+    if (heartbeats.length === 0) return true;
 
-  const editorVersion = await getEditorVersion();
-  const userAgent = buildUserAgent(editorVersion);
-  const payload = heartbeats.map((h) => toWakaHeartbeat(h, userAgent));
+    const editorVersion = await getEditorVersion();
+    const userAgent = buildUserAgent(editorVersion);
+    const payload = heartbeats.map((h) => toWakaHeartbeat(h, userAgent));
 
-  logger.debug(`Sending ${payload.length} Junie AI heartbeat(s) to WakaTime`);
+    logger.debug(`Sending ${payload.length} Junie AI heartbeat(s) to WakaTime`);
 
-  const sent = await sendHeartbeats(payload, options);
-  if (sent && maxTimestampMs > lastParsedAt) {
-    await setAILastParsedAt(maxTimestampMs);
-  }
+    const sent = await sendHeartbeats(payload, options);
+    if (sent && maxTimestampMs > lastParsedAt) {
+      await setAILastParsedAt(maxTimestampMs);
+    }
+    return sent;
+  });
 }
 
 async function main() {
@@ -88,8 +105,11 @@ async function main() {
     // to the per-project debounce.
     const isSessionEnd = inp?.hook_event_name === 'SessionEnd';
     if (inp && (shouldSendHeartbeat(inp) || isSessionEnd)) {
-      await syncJunieActivity();
-      await updateState();
+      const sent = await syncJunieActivity();
+      // Only reset the debounce when nothing needed sending or the send
+      // succeeded. On failure, leave it alone so the next hook can retry
+      // promptly instead of waiting out the full debounce window again.
+      if (sent) await updateState();
     }
   } catch (err) {
     logger.errorException(err);

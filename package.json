@@ -26,21 +26,15 @@
     "ai"
   ],
   "devDependencies": {
-    "@types/adm-zip": "^0.5.7",
     "@types/eslint": "^8.44.7",
     "@types/node": "^20.9.2",
     "@types/prettier": "^2.7.3",
-    "@types/semver": "^7.7.0",
-    "@types/which": "^3.0.4",
     "@typescript-eslint/eslint-plugin": "6.11.0",
     "@typescript-eslint/parser": "6.11.0",
-    "adm-zip": "0.5.16",
     "esbuild": "^0.25.12",
     "eslint": "^8.54.0",
     "prettier": "^3.1.0",
-    "semver": "^7.7.2",
-    "typescript": "^5.2.2",
-    "which": "^5.0.0"
+    "typescript": "^5.2.2"
   },
   "author": "WakaTime",
   "license": "BSD-3-Clause",

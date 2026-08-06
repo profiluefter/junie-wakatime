@@ -11,6 +11,11 @@ import { VERSION } from './version';
 
 const DEFAULT_API_URL = 'https://api.wakatime.com/api/v1';
 
+// REQUEST_TIMEOUT_MS bounds how long a single heartbeat POST may hang before
+// it is aborted, so a stuck connection fails fast instead of blocking the hook
+// process indefinitely; the cursor-retry logic then resends on the next run.
+const REQUEST_TIMEOUT_MS = 10_000;
+
 // A single heartbeat in the exact JSON shape the WakaTime bulk API accepts.
 // Fields mirror `pkg/heartbeat/heartbeat.go` in wakatime-cli.
 export interface WakaHeartbeat {
@@ -134,14 +139,41 @@ async function post(url: URL, body: string, headers: Record<string, string>, pro
     headers,
   };
 
-  // Route through a proxy when configured. https targets use a CONNECT tunnel;
-  // plain http targets use an absolute-form request line to the proxy.
+  // Route through a proxy when configured. https targets use a CONNECT tunnel
+  // wrapped in TLS to the real target; plain http targets use an absolute-form
+  // request line to the proxy.
   if (proxy && proxy.trim()) {
     const proxyUrl = new URL(proxy.trim());
     if (isHttps) {
-      const socket = await createProxyTunnel(proxyUrl, url);
-      (requestOptions as { socket?: net.Socket }).socket = socket;
-      requestOptions.servername = url.hostname;
+      const tunnel = await createProxyTunnel(proxyUrl, url);
+      const secureSocket = tls.connect({
+        socket: tunnel,
+        servername: url.hostname,
+      });
+      return new Promise<HttpResponse>((resolve, reject) => {
+        secureSocket.once('error', reject);
+        const req = https.request(
+          {
+            host: url.hostname,
+            port: url.port ? parseInt(url.port, 10) : 443,
+            path: `${url.pathname}${url.search}`,
+            method: 'POST',
+            headers,
+            agent: false,
+            createConnection: () => secureSocket,
+            timeout: REQUEST_TIMEOUT_MS,
+          },
+          (res) => {
+            let data = '';
+            res.on('data', (chunk) => (data += chunk));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body: data }));
+          },
+        );
+        req.on('error', reject);
+        req.on('timeout', () => req.destroy(new Error('Request to WakaTime API timed out')));
+        req.write(body);
+        req.end();
+      });
     } else {
       requestOptions.hostname = proxyUrl.hostname;
       requestOptions.port = proxyUrl.port || 80;
@@ -150,6 +182,8 @@ async function post(url: URL, body: string, headers: Record<string, string>, pro
     }
   }
 
+  requestOptions.timeout = REQUEST_TIMEOUT_MS;
+
   return new Promise<HttpResponse>((resolve, reject) => {
     const req = transport.request(requestOptions, (res) => {
       let data = '';
@@ -157,6 +191,7 @@ async function post(url: URL, body: string, headers: Record<string, string>, pro
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body: data }));
     });
     req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('Request to WakaTime API timed out')));
     req.write(body);
     req.end();
   });

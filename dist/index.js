@@ -57,6 +57,36 @@ function getStateFile() {
 function getAILastParsedFile() {
   return path.join(getHomeDirectory(), ".wakatime", "junie-wakatime", "ai-last-parsed.json");
 }
+function getAILastParsedLockFile() {
+  return path.join(getHomeDirectory(), ".wakatime", "junie-wakatime", "ai-last-parsed.lock");
+}
+var LOCK_RETRY_MS = 50;
+var LOCK_TIMEOUT_MS = 5e3;
+async function withAiCursorLock(fn) {
+  const lockFile = getAILastParsedLockFile();
+  await fs.promises.mkdir(path.dirname(lockFile), { recursive: true });
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  for (; ; ) {
+    try {
+      fs.closeSync(fs.openSync(lockFile, "wx"));
+      break;
+    } catch (err) {
+      const code = err.code;
+      if (code !== "EEXIST" || Date.now() >= deadline) {
+        break;
+      }
+      await new Promise((resolve2) => setTimeout(resolve2, LOCK_RETRY_MS));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      fs.unlinkSync(lockFile);
+    } catch {
+    }
+  }
+}
 function getAILastParsedAt() {
   try {
     const parsed = JSON.parse(fs.readFileSync(getAILastParsedFile(), "utf-8"));
@@ -525,6 +555,7 @@ var VERSION = "4.1.0";
 
 // src/wakatime.ts
 var DEFAULT_API_URL = "https://api.wakatime.com/api/v1";
+var REQUEST_TIMEOUT_MS = 1e4;
 function buildUserAgent(editorVersion) {
   const system = `${os3.platform()}-${os3.release()}-${os3.arch()}`;
   const plugin = editorVersion ? `junie-cli/${editorVersion} junie-wakatime/${VERSION}` : `junie-wakatime/${VERSION}`;
@@ -597,9 +628,35 @@ async function post(url, body, headers, proxy) {
   if (proxy && proxy.trim()) {
     const proxyUrl = new import_url.URL(proxy.trim());
     if (isHttps) {
-      const socket = await createProxyTunnel(proxyUrl, url);
-      requestOptions.socket = socket;
-      requestOptions.servername = url.hostname;
+      const tunnel = await createProxyTunnel(proxyUrl, url);
+      const secureSocket = tls.connect({
+        socket: tunnel,
+        servername: url.hostname
+      });
+      return new Promise((resolve2, reject) => {
+        secureSocket.once("error", reject);
+        const req = https.request(
+          {
+            host: url.hostname,
+            port: url.port ? parseInt(url.port, 10) : 443,
+            path: `${url.pathname}${url.search}`,
+            method: "POST",
+            headers,
+            agent: false,
+            createConnection: () => secureSocket,
+            timeout: REQUEST_TIMEOUT_MS
+          },
+          (res) => {
+            let data = "";
+            res.on("data", (chunk) => data += chunk);
+            res.on("end", () => resolve2({ status: res.statusCode ?? 0, body: data }));
+          }
+        );
+        req.on("error", reject);
+        req.on("timeout", () => req.destroy(new Error("Request to WakaTime API timed out")));
+        req.write(body);
+        req.end();
+      });
     } else {
       requestOptions.hostname = proxyUrl.hostname;
       requestOptions.port = proxyUrl.port || 80;
@@ -607,6 +664,7 @@ async function post(url, body, headers, proxy) {
       requestOptions.headers = { ...headers, Host: url.host };
     }
   }
+  requestOptions.timeout = REQUEST_TIMEOUT_MS;
   return new Promise((resolve2, reject) => {
     const req = transport.request(requestOptions, (res) => {
       let data = "";
@@ -614,6 +672,7 @@ async function post(url, body, headers, proxy) {
       res.on("end", () => resolve2({ status: res.statusCode ?? 0, body: data }));
     });
     req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("Request to WakaTime API timed out")));
     req.write(body);
     req.end();
   });
@@ -677,22 +736,25 @@ function toWakaHeartbeat(h, userAgent) {
   return hb;
 }
 async function syncJunieActivity() {
-  const lastParsedAt = getAILastParsedAt();
-  if (lastParsedAt === void 0) {
-    await setAILastParsedAt(Date.now());
-    logger.debug("Initialized Junie AI activity cursor; skipping historical backfill");
-    return;
-  }
-  const { heartbeats, maxTimestampMs } = collectHeartbeats(lastParsedAt);
-  if (heartbeats.length === 0) return;
-  const editorVersion = await getEditorVersion();
-  const userAgent = buildUserAgent(editorVersion);
-  const payload = heartbeats.map((h) => toWakaHeartbeat(h, userAgent));
-  logger.debug(`Sending ${payload.length} Junie AI heartbeat(s) to WakaTime`);
-  const sent = await sendHeartbeats(payload, options);
-  if (sent && maxTimestampMs > lastParsedAt) {
-    await setAILastParsedAt(maxTimestampMs);
-  }
+  return withAiCursorLock(async () => {
+    const lastParsedAt = getAILastParsedAt();
+    if (lastParsedAt === void 0) {
+      await setAILastParsedAt(Date.now());
+      logger.debug("Initialized Junie AI activity cursor; skipping historical backfill");
+      return true;
+    }
+    const { heartbeats, maxTimestampMs } = collectHeartbeats(lastParsedAt);
+    if (heartbeats.length === 0) return true;
+    const editorVersion = await getEditorVersion();
+    const userAgent = buildUserAgent(editorVersion);
+    const payload = heartbeats.map((h) => toWakaHeartbeat(h, userAgent));
+    logger.debug(`Sending ${payload.length} Junie AI heartbeat(s) to WakaTime`);
+    const sent = await sendHeartbeats(payload, options);
+    if (sent && maxTimestampMs > lastParsedAt) {
+      await setAILastParsedAt(maxTimestampMs);
+    }
+    return sent;
+  });
 }
 async function main() {
   const inp = parseInput();
@@ -702,8 +764,8 @@ async function main() {
     if (inp) logger.debug(JSON.stringify(inp, null, 2));
     const isSessionEnd = inp?.hook_event_name === "SessionEnd";
     if (inp && (shouldSendHeartbeat(inp) || isSessionEnd)) {
-      await syncJunieActivity();
-      await updateState();
+      const sent = await syncJunieActivity();
+      if (sent) await updateState();
     }
   } catch (err) {
     logger.errorException(err);

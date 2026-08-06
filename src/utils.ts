@@ -30,6 +30,51 @@ function getAILastParsedFile(): string {
   return path.join(getHomeDirectory(), '.wakatime', 'junie-wakatime', 'ai-last-parsed.json');
 }
 
+function getAILastParsedLockFile(): string {
+  return path.join(getHomeDirectory(), '.wakatime', 'junie-wakatime', 'ai-last-parsed.lock');
+}
+
+const LOCK_RETRY_MS = 50;
+const LOCK_TIMEOUT_MS = 5000;
+
+// withAiCursorLock serializes read-modify-write access to the AI parse cursor
+// across concurrent hook invocations. Hooks are configured with "async": true
+// and can fire concurrently (e.g. PreToolUse/UserPromptSubmit), so without
+// this lock two processes could read the same stale cursor and both send
+// heartbeats for the same events. Uses exclusive file creation as a simple
+// cross-process mutex, with a bounded wait so a stale/crashed lock can never
+// block hooks forever.
+export async function withAiCursorLock<T>(fn: () => Promise<T>): Promise<T> {
+  const lockFile = getAILastParsedLockFile();
+  await fs.promises.mkdir(path.dirname(lockFile), { recursive: true });
+
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(lockFile, 'wx'));
+      break;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EEXIST' || Date.now() >= deadline) {
+        // Give up waiting rather than blocking the hook indefinitely; worst
+        // case is the rare duplicate-heartbeat race this lock guards against.
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    try {
+      fs.unlinkSync(lockFile);
+    } catch {
+      // ignore: lock file may not exist if acquiring it timed out above
+    }
+  }
+}
+
 // getAILastParsedAt returns the timestamp (unix epoch ms) of the newest Junie
 // transcript event already turned into heartbeats, or undefined on first run.
 export function getAILastParsedAt(): number | undefined {
